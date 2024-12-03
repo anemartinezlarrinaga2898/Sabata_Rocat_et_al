@@ -1,0 +1,555 @@
+---
+title: "Plots"
+author: "ANE MARTINEZ LARRINAGA"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+directory <- setwd("/Users/anemartinezlarrinaga/Library/CloudStorage/OneDrive-JosepCarrerasLeukaemiaResearchInstitute(IJC)/2_PhD/1_GRAUPERA_LAB/2_PROYECTOS/10_Ana_MGRAUPERA_10/")
+```
+
+
+```{r}
+library(Seurat)
+library(RColorBrewer)
+library(tidyverse)
+library(foreach)
+library(Matrix)
+library(readxl)
+library(colorRamp2)
+library(ComplexHeatmap)
+library(patchwork)
+library(gridExtra)
+library(grid)
+library(plyr)
+set.seed(123)
+
+path_guardar <- "Plots"
+dir.create(path_guardar)
+```
+
+```{r}
+# F U N C T I O N |||||||||||  |||||||||||  |||||||||||  |||||||||||  |||||||||||  ||||||||||| 
+
+AggregateMatrix<-function(data,column_metadata){
+    cts <- AggregateExpression(data, 
+                           group.by = column_metadata,
+                           assays = 'RNA',
+                           slot = "counts",
+                           return.seurat = FALSE)
+    cts <- cts$RNA
+    cts.t <- t(as.matrix(cts))
+    cts.t <- t(as.data.frame(cts.t))
+    return(cts.t)
+}
+
+Function_Matrix_Exp<-function(data,features_df_filtered){
+    clusters<-unique(data@active.ident)
+    clusters<-levels(clusters)
+    matrix_expression<-matrix(0,ncol=length(clusters),nrow=nrow(features_df_filtered))
+    colnames(matrix_expression)<-clusters
+    rownames(matrix_expression)<-rownames(features_df_filtered)
+
+    for(i in seq_along(features_df_filtered$Features)){
+    f<-features_df_filtered$Features[i]
+    print(f)
+
+    idx_f<-which(rownames(matrix_filtered)==f)
+    m_f<-matrix_filtered[idx_f,]
+    names(m_f)<-colnames(matrix_filtered)
+
+    j<-1
+
+    for(j in seq_along(clusters)){
+        c<-clusters[j]
+        print(c)
+
+        idx_c<-which(data@active.ident==c)
+        cells_id<-rownames(data@meta.data)[idx_c]
+
+        m_f_cells<-m_f[cells_id]
+        media<-mean(m_f_cells)
+        matrix_expression[i,j]<-media
+        }
+    }
+
+    return(matrix_expression)
+}
+
+#||||||||||  |||||||||||  |||||||||||  |||||||||||  |||||||||||  ||||||||||| 
+```
+
+
+```{r}
+data <- readRDS("0.2_SeuratPipeline/Clustering/RemovingCluster/Remove_Clus_4/SeuratObject_Remove.rds")
+data$Phenotype <- factor(data$Phenotype,levels = c("OB_et","OB_40HT"),labels = c("OB_et","OB_40HT"))
+```
+
+```{r}
+# UMAPS of the clusters 
+
+# Define Cluster
+
+data@meta.data$Annotationlayer<- revalue(data@meta.data$RNA_snn_res.0.3, c("0" = "Proliferative-1",
+                                                                        "1" = "Tip-Like EC",
+                                                                        "2" = "Venus-Like EC",
+                                                                        "3" = "Proliferative-2",
+                                                                        "4" = "Inflammatory-Like EC",
+                                                                        "5" = "Proliferative-1"))
+
+data <- SetIdent(data,value="Annotationlayer")
+#saveRDS(data,paste(path_guardar,"Data_Annotated.rds",sep="/"))
+data$Annotationlayer <- factor(data$Annotationlayer,levels = c("Tip-Like EC","Venus-Like EC","Inflammatory-Like EC","Proliferative-1","Proliferative-2"),labels = c("Tip-Like EC","Venus-Like EC","Inflammatory-Like EC","Proliferative-1","Proliferative-2"))
+
+col_cluster <- c("#BAD471","#E8A3B8","#D8BEDC","#E4C281","#FBF5BB")
+names(col_cluster) <- levels(data$Annotationlayer)
+
+DimPlot(data,reduction = "umap",group.by = "Annotationlayer",label = F, label.size = 5,pt.size = 1,raster=FALSE,cols = col_cluster)&NoAxes()&ggtitle("Clusters")
+ggsave(paste(path_guardar,"UMAP_Clusters.tiff",sep="/"),height = 5,width =6)
+ggsave(paste(path_guardar,"UMAP_Clusters.pdf",sep="/"),height = 5,width =6)
+
+DimPlot(data,reduction = "umap",group.by = "Phenotype",label = F, label.size = 5,pt.size = 1,raster=FALSE,cols = c("#808081","#8AAAD3"))&NoAxes()&ggtitle("Phenotype")
+ggsave(paste(path_guardar,"UMAP_Phenotype.tiff",sep="/"),height = 5,width =6)
+ggsave(paste(path_guardar,"UMAP_Phenotype.pdf",sep="/"),height = 5,width =6)
+
+DimPlot(data,reduction = "umap",group.by = "Phenotype",label = F, label.size = 5,pt.size = 1,raster=FALSE,cols = c("#808081","#8AAAD3"),split.by = "Phenotype")&NoAxes()&ggtitle("Phenotype")
+ggsave(paste(path_guardar,"UMAP_Phenotype_Split.tiff",sep="/"),height = 5,width =8)
+ggsave(paste(path_guardar,"UMAP_Phenotype_Split.pdf",sep="/"),height = 5,width =8)
+
+matchSCore2::summary_barplot(class.fac = data$Annotationlayer,obs.fac =data$Phenotype)+scale_fill_manual(values = col_cluster)+
+  theme(legend.position = "bottom",
+        legend.justification = "center",
+        legend.text = element_text(size=6),
+        legend.key.size = unit(0.4, "cm"),
+        panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 8),  # Cambiar tamaño de los números del eje X
+        axis.text.y = element_text(size = 8))+ 
+  guides(fill = guide_legend(nrow = 3))
+ggsave(paste(path_guardar,"BarPlot_CellTypeProp.tiff",sep="/"),height = 5,width =2.5)
+ggsave(paste(path_guardar,"BarPlot_CellTypeProp.pdf",sep="/"),height = 5,width =2.5)
+
+matchSCore2::summary_barplot(class.fac = data$Annotationlayer,obs.fac =data$Phenotype)+scale_fill_manual(values = col_cluster)+
+  theme(legend.position = "bottom",
+        legend.justification = "center",
+        legend.text = element_text(size=6),
+        legend.key.size = unit(0.4, "cm"),
+        panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 8),  # Cambiar tamaño de los números del eje X
+        axis.text.y = element_text(size = 8))+ 
+  guides(fill = guide_legend(nrow = 3))+
+  coord_flip()
+ggsave(paste(path_guardar,"BarPlot_CellTypeProp_Flipped.tiff",sep="/"),height = 2.5,width =4)
+ggsave(paste(path_guardar,"BarPlot_CellTypeProp_Flipped.pdf",sep="/"),height = 2.5,width =4)
+
+```
+
+```{r}
+features <- c("Pecam1","Cdh5","Emcn","Cldn5","Kdr","Fli1","Erg","Cxcr4","Dll4","Esm1","Apln","Angpt2","Hey1","Sox17","Dach1","Nrp2","Tek","Ephb4","Nr2f2","Flt4","Cxcl12","Serpin1","Icam1","Cd44","Ptgs2","Mki67","Cdk1","Aurka","Smc4")
+
+features_annot <- data.frame(features=features,
+                             group=c("EndothelialCell","EndothelialCell","EndothelialCell","EndothelialCell","EndothelialCell","EndothelialCell","EndothelialCell",
+                                     "TipCells","TipCells","TipCells","TipCells","TipCells",
+                                     "Artery","Artery","Artery",
+                                     "Venous","Venous","Venous","Venous","Venous",
+                                     "Inflammatory","Inflammatory","Inflammatory","Inflammatory","Inflammatory",
+                                     "Proliferative","Proliferative","Proliferative","Proliferative"),
+                             stringsAsFactors = FALSE)
+features_annot$features <- make.unique(features_annot$features)  # Asegurar nombres únicos en features_annot
+data$Annotationlayer <- factor(data$Annotationlayer,levels = c("Proliferative-2","Proliferative-1","Inflammatory-Like EC","Venus-Like EC","Tip-Like EC"),labels = c("Proliferative-2","Proliferative-1","Inflammatory-Like EC","Venus-Like EC","Tip-Like EC"))
+data <- SetIdent(data,value="Annotationlayer")
+
+DotPlot_Markers_Genes <- DotPlot(data, features =features_annot$features)&
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = rel(1.1), face = "plain"),
+        axis.text.y = element_text(size = rel(0.8), face = "plain"), 
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank())&
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "Spectral")))&
+  labs(x = "Cell Type", y = "")&
+  geom_vline(xintercept = c(7.5,12.5,15.5,20.5,24.5), color = "#5D6772", linetype = "dashed")
+ggsave(file=paste(path_guardar,"DotPlot_VisualizeMarkedSelected_Genes_NoLymphatics.tiff",sep="/"),width=12,height=5)
+ggsave(file=paste(path_guardar,"DotPlot_VisualizeMarkedSelected_Genes_NoLymphatics.pdf",sep="/"),width=12,height=5)
+
+features <- c("Pecam1", "Cdh5", "Emcn", "Cldn5", "Kdr", "Erg", "Cxcr4", "Dll4", "Esm1", "Apln", "Angpt2","Sox17", "Dach1", "Nrp2", "Nr2f2", "Ephb4", "Cxcl12", "Ptgs2", "Cd44", "Mki67", "Cdk1", "Aurka")
+
+Fp <-FeaturePlot(data,features =features,min.cutoff = "q9", order=T,raster=FALSE,col=c("#D5D5D5","#5B4DA2"))&NoAxes()
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_GenesInteresTotal_AllTogether.tiff",sep="/"),height = 10,width = 15)
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_GenesInteresTotal_AllTogether.pdf",sep="/"),height = 15 ,width = 15)
+
+for(i in seq_along(features)){
+  fea<-features[i]
+  print(fea)
+
+  Fp <-FeaturePlot(data,features =fea,min.cutoff = "q9", order=T,raster=FALSE,col=c("#D5D5D5","#5B4DA2"),pt.size = 1)&NoAxes()
+  file_name<-paste(fea,".tiff",sep="")
+  ggsave(plot=Fp,filename=paste(path_guardar,file_name,sep="/"),height = 5,width =5)
+  file_name<-paste(fea,".pdf",sep="")
+  ggsave(plot=Fp,filename=paste(path_guardar,file_name,sep="/"),height = 5,width =5)
+
+}
+
+
+```
+
+
+```{r}
+# Heatmap
+features_df <- features_annot
+rownames(features_df) <- features_df$features
+colnames(features_df) <- c("Features","CellType")
+
+matrix<-data@assays[["RNA"]]@data
+genes<-rownames(matrix)
+common<-intersect(genes,features_df$Features)
+matrix_filtered<-matrix[common,]
+
+features_df_filtered<-features_df[common,]
+features_df_filtered<-features_df_filtered[order(features_df_filtered$CellType,decreasing=F),]
+rownames(features_df_filtered)<-features_df_filtered$Features 
+
+features_df_filtered <- features_df_filtered %>%
+  arrange(match(CellType, features_df$CellType), match(rownames(features_df_filtered), features_df$Features))
+
+matrix_expression<-Function_Matrix_Exp(data,features_df_filtered)
+rownames(matrix_expression) <- features_df_filtered$Features
+
+features_df_filtered_V2<-data.frame(CellType=features_df_filtered$CellType)
+
+features_df_filtered_V2 <- features_df_filtered_V2 %>%
+  arrange(match(CellType, features_df$CellType), match(rownames(features_df_filtered_V2), features_df$Features))
+
+rownames(features_df_filtered_V2)<-features_df_filtered$Features
+matrix_expression<-t(scale(t(matrix_expression)))
+
+features_df_filtered_V2$CellType <- factor(features_df_filtered_V2$CellType,levels = c("EndothelialCell","TipCells","Artery","Venous","Inflammatory","Proliferative"))
+
+#matrix_expression <- matrix_expression[match(features_df_filtered$Features, rownames(matrix_expression)), ]
+f1 <- colorRamp2(seq(min(matrix_expression), max(matrix_expression), length = 3), c("#1874CD", "#EEEEE0", "#CD2626"))
+colores_clusters <- c("EndothelialCell" = "#FFCCBA", 
+                      "TipCells" = "#BAD471", 
+                      "Artery" = "#CBEFCA", 
+                      "Venous" = "#E8A3B8", 
+                      "Inflammatory" = "#D1CCF9", 
+                      "Proliferative" = "#FBF5BB")
+ha <- rowAnnotation(df = features_df_filtered_V2, 
+                    col = list(CellType = colores_clusters))
+
+
+orden_columnas <- c("Tip-Like EC", "Venus-Like EC", "Inflammatory-Like EC", "Proliferative-1","Proliferative-2")  
+matrix_expression <- matrix_expression[, match(orden_columnas, colnames(matrix_expression))]
+
+tiff(paste(path_guardar,"Heatmap_VisualizeMarkedSelected_Genes_NoLymphatics_Normal.tiff",sep="/"), width = 5, height = 7, units = "in", res = 300)
+Heatmap(matrix_expression,
+        column_names_side = "bottom", 
+        row_names_side = "left",
+        rect_gp = gpar(col = "white", lwd = 2),
+        col = f1,
+        cluster_rows = FALSE,
+        cluster_columns=FALSE,
+        left_annotation = ha,heatmap_legend_param = list(title = ""),
+        column_title = "Markers",
+        row_names_gp = gpar(fontsize = 8),
+        row_split = features_df_filtered_V2$CellType,
+        row_title = NULL)
+dev.off()
+
+pdf(paste(path_guardar,"Heatmap_VisualizeMarkedSelected_Genes_NoLymphatics_Normal.pdf",sep="/"), width = 5, height = 7)
+Heatmap(matrix_expression,
+        column_names_side = "bottom", 
+        row_names_side = "left",
+        rect_gp = gpar(col = "white", lwd = 2),
+        col = f1,
+        cluster_rows = FALSE,
+        cluster_columns=FALSE,
+        left_annotation = ha,heatmap_legend_param = list(title = ""),
+        column_title = "Markers",
+        row_names_gp = gpar(fontsize = 8),
+        row_split = features_df_filtered_V2$CellType,
+        row_title = NULL)
+dev.off()
+
+matrix_expression_t <- t(matrix_expression)
+colores_clusters <- c("EndothelialCell" = "#FFCCBA", 
+                      "TipCells" = "#BAD471", 
+                      "Artery" = "#CBEFCA", 
+                      "Venous" = "#E8A3B8", 
+                      "Inflammatory" = "#D1CCF9", 
+                      "Proliferative" = "#FBF5BB")
+
+# Crear anotación de filas
+ha <- rowAnnotation(df = features_df_filtered_V2, 
+                    col = list(CellType = colores_clusters))
+
+# Crear anotación para las columnas (parte inferior)
+bottom_annotation <- HeatmapAnnotation(
+  df = data.frame(CellType = features_df_filtered_V2$CellType),  # Asume que 'column_groups' está relacionado con los grupos de las columnas
+  col = list(CellType = colores_clusters)  # Utilizar los mismos colores que las filas
+)
+
+tiff(paste(path_guardar,"Heatmap_VisualizeMarkedSelected_Genes_NoLymphatics.tiff",sep="/"), width = 15, height = 4, units = "in", res = 300)
+Heatmap(matrix_expression_t,
+        cluster_rows = FALSE, 
+        cluster_columns = FALSE,
+        heatmap_legend_param = list(title = ""),
+        rect_gp = gpar(col = "white", lwd = 2), 
+        col = f1,
+        column_split = features_df_filtered_V2$CellType,
+        column_names_side = "top", 
+        row_names_side = "left",
+        top_annotation = bottom_annotation,
+        column_title = NULL)
+dev.off()
+
+pdf(paste(path_guardar,"Heatmap_VisualizeMarkedSelected_Genes_NoLymphatics.pdf",sep="/"), width = 15, height = 4)
+Heatmap(matrix_expression_t,
+        cluster_rows = FALSE, 
+        cluster_columns = FALSE,
+        heatmap_legend_param = list(title = ""),
+        rect_gp = gpar(col = "white", lwd = 2), 
+        col = f1,
+        column_split = features_df_filtered_V2$CellType,
+        column_names_side = "top", 
+        row_names_side = "left",
+        top_annotation = bottom_annotation,
+        column_title = NULL)
+dev.off()
+
+```
+
+```{r}
+features <- c("Prox1","Lyve1","Pdpn","Vav3","Itga9","Reln")
+
+DotPlot_Markers_Genes <- DotPlot(data, features =features)&
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = rel(1.1), face = "plain"),
+        axis.text.y = element_text(size = rel(0.8), face = "plain"), 
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank())&
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "Spectral")))&
+  labs(x = "Cell Type", y = "")
+ggsave(file=paste(path_guardar,"DotPlot_VisualizeMarkedSelected_Genes_Lymphatics.tiff",sep="/"),width=7,height=4)
+ggsave(file=paste(path_guardar,"DotPlot_VisualizeMarkedSelected_Genes_Lymphatics.pdf",sep="/"),width=7,height=4)
+
+# Heatmap
+features_df <- data.frame(Features=features)
+features_df$CellType <- "Lymphatics"
+rownames(features_df) <- features_df$Features
+
+matrix<-data@assays[["RNA"]]@data
+genes<-rownames(matrix)
+common<-intersect(genes,features_df$Features)
+matrix_filtered<-matrix[common,]
+
+features_df_filtered<-features_df[common,]
+features_df_filtered<-features_df_filtered[order(features_df_filtered$CellType,decreasing=F),]
+rownames(features_df_filtered)<-features_df_filtered$Features 
+
+features_df_filtered <- features_df_filtered %>%
+  arrange(match(CellType, features_df$CellType), match(rownames(features_df_filtered), features_df$Features))
+
+matrix_expression<-Function_Matrix_Exp(data,features_df_filtered)
+rownames(matrix_expression) <- features_df_filtered$Features
+
+features_df_filtered_V2<-data.frame(CellType=features_df_filtered$CellType)
+
+features_df_filtered_V2 <- features_df_filtered_V2 %>%
+  arrange(match(CellType, features_df$CellType), match(rownames(features_df_filtered_V2), features_df$Features))
+
+rownames(features_df_filtered_V2)<-features_df_filtered$Features
+matrix_expression<-t(scale(t(matrix_expression)))
+
+#matrix_expression <- matrix_expression[match(features_df_filtered$Features, rownames(matrix_expression)), ]
+f1 <- colorRamp2(seq(min(matrix_expression), max(matrix_expression), length = 3), c("#1874CD", "#EEEEE0", "#CD2626"))
+colores_clusters <- c("Lymphatics" = "#B0DFDD")
+ha <- rowAnnotation(df = features_df_filtered_V2, 
+                    col = list(CellType = colores_clusters))
+
+
+orden_columnas <- c("Tip-Like EC", "Venus-Like EC", "Inflammatory-Like EC", "Proliferative-1","Proliferative-2")  
+matrix_expression <- matrix_expression[, match(orden_columnas, colnames(matrix_expression))]
+
+tiff(paste(path_guardar,"Heatmap_VisualizeMarkedSelected_Genes_Lymphatics.tiff",sep="/"), width = 5, height = 5, units = "in", res = 300)
+Heatmap(matrix_expression,
+        column_names_side = "bottom", 
+        row_names_side = "left",
+        rect_gp = gpar(col = "white", lwd = 2),
+        col = f1,
+        cluster_rows = FALSE,
+        cluster_columns=FALSE,
+        left_annotation = ha,heatmap_legend_param = list(title = ""),
+        column_title = "Markers",
+        row_names_gp = gpar(fontsize = 8),
+        row_split = features_df_filtered_V2$CellType,
+        row_title = NULL)
+dev.off()
+
+pdf(paste(path_guardar,"Heatmap_VisualizeMarkedSelected_Genes_Lymphatics.pdf",sep="/"), width = 5, height = 5)
+Heatmap(matrix_expression,
+        column_names_side = "bottom", 
+        row_names_side = "left",
+        rect_gp = gpar(col = "white", lwd = 2),
+        col = f1,
+        cluster_rows = FALSE,
+        cluster_columns=FALSE,
+        left_annotation = ha,heatmap_legend_param = list(title = ""),
+        column_title = "Markers",
+        row_names_gp = gpar(fontsize = 8),
+        row_split = features_df_filtered_V2$CellType,
+        row_title = NULL)
+dev.off()
+```
+
+```{r}
+data <- SetIdent(data,value="Annotationlayer")
+markers <- FindAllMarkers(data,only.pos = T)
+saveRDS(markers,paste(path_guardar,"markers.rds",sep="/"))
+markers_plot <- markers %>%
+  arrange(cluster, desc(avg_log2FC)) %>%  # Ordena por cluster y el valor de avg_log2FC de forma descendente
+  distinct(gene, .keep_all = TRUE) %>%  # Elimina los genes duplicados, conservando los datos de cada fila
+  group_by(cluster) %>%  # Agrupa por cluster
+  slice_head(n = 5)
+
+```
+
+
+```{r}
+features_df <- as.data.frame(markers_plot[,c("cluster","gene")])
+rownames(features_df) <- features_df$gene
+colnames(features_df) <- c("CellType","Features")
+
+matrix<-data@assays[["RNA"]]@data
+genes<-rownames(matrix)
+common<-intersect(genes,features_df$Features)
+matrix_filtered<-matrix[common,]
+
+features_df_filtered<-features_df[common,]
+features_df_filtered<-features_df_filtered[order(features_df_filtered$CellType,decreasing=F),]
+rownames(features_df_filtered)<-features_df_filtered$Features 
+
+features_df_filtered <- features_df_filtered %>%
+  arrange(match(CellType, features_df$CellType), match(rownames(features_df_filtered), features_df$Features))
+
+matrix_expression<-Function_Matrix_Exp(data,features_df_filtered)
+rownames(matrix_expression) <- features_df_filtered$Features
+
+features_df_filtered_V2<-data.frame(CellType=features_df_filtered$CellType)
+
+features_df_filtered_V2 <- features_df_filtered_V2 %>%
+  arrange(match(CellType, features_df$CellType), match(rownames(features_df_filtered_V2), features_df$Features))
+
+rownames(features_df_filtered_V2)<-features_df_filtered$Features
+matrix_expression<-t(scale(t(matrix_expression)))
+
+features_df_filtered_V2$CellType <- factor(features_df_filtered_V2$CellType,levels = c("Tip-Like EC", "Venus-Like EC", "Inflammatory-Like EC", "Proliferative-1","Proliferative-2"))
+
+#matrix_expression <- matrix_expression[match(features_df_filtered$Features, rownames(matrix_expression)), ]
+f1 <- colorRamp2(seq(min(matrix_expression), max(matrix_expression), length = 3), c("#1874CD", "#EEEEE0", "#CD2626"))
+colores_clusters <- c("Tip-Like EC"="#BAD471",
+                      "Venus-Like EC"="#E8A3B8",
+                      "Inflammatory-Like EC"="#D8BEDC",
+                      "Proliferative-1"="#E4C281",
+                      "Proliferative-2"="#FFE04F")
+ha <- rowAnnotation(df = features_df_filtered_V2, 
+                    col = list(CellType = colores_clusters))
+
+orden_columnas <- c("Tip-Like EC", "Venus-Like EC", "Inflammatory-Like EC", "Proliferative-1","Proliferative-2")  
+matrix_expression <- matrix_expression[, match(orden_columnas, colnames(matrix_expression))]
+
+tiff(paste(path_guardar,"Heatmap_VisualizeTopMarked_Genes_NoLymphatics_Normal.tiff",sep="/"), width = 5, height = 7, units = "in", res = 300)
+Heatmap(matrix_expression,
+        column_names_side = "bottom", 
+        row_names_side = "left",
+        rect_gp = gpar(col = "white", lwd = 2),
+        col = f1,
+        cluster_rows = FALSE,
+        cluster_columns=FALSE,
+        left_annotation = ha,heatmap_legend_param = list(title = ""),
+        column_title = "Markers",
+        row_names_gp = gpar(fontsize = 8),
+        row_split = features_df_filtered_V2$CellType,
+        row_title = NULL)
+dev.off()
+
+pdf(paste(path_guardar,"Heatmap_VisualizeTopMarked_Genes_NoLymphatics_Normal.pdf",sep="/"), width = 5, height = 7)
+Heatmap(matrix_expression,
+        column_names_side = "bottom", 
+        row_names_side = "left",
+        rect_gp = gpar(col = "white", lwd = 2),
+        col = f1,
+        cluster_rows = FALSE,
+        cluster_columns=FALSE,
+        left_annotation = ha,heatmap_legend_param = list(title = ""),
+        column_title = "Markers",
+        row_names_gp = gpar(fontsize = 8),
+        row_split = features_df_filtered_V2$CellType,
+        row_title = NULL)
+dev.off()
+
+matrix_expression_t <- t(matrix_expression)
+colores_clusters <- c("Tip-Like EC"="#78BA5E",
+                      "Venus-Like EC"="#E3669B",
+                      "Inflammatory-Like EC"="#ABA3E3",
+                      "Proliferative-1"="#F2862C",
+                      "Proliferative-2"="#FFE04F")
+# Crear anotación de filas
+ha <- rowAnnotation(df = features_df_filtered_V2, 
+                    col = list(CellType = colores_clusters))
+
+# Crear anotación para las columnas (parte inferior)
+bottom_annotation <- HeatmapAnnotation(
+  df = data.frame(CellType = features_df_filtered_V2$CellType),  # Asume que 'column_groups' está relacionado con los grupos de las columnas
+  col = list(CellType = colores_clusters)  # Utilizar los mismos colores que las filas
+)
+
+tiff(paste(path_guardar,"Heatmap_VisualizeTopMarked_Genes_NoLymphatics_Normal_Horizontal.tiff",sep="/"), width = 15, height = 4, units = "in", res = 300)
+Heatmap(matrix_expression_t,
+        cluster_rows = FALSE, 
+        cluster_columns = FALSE,
+        heatmap_legend_param = list(title = ""),
+        rect_gp = gpar(col = "white", lwd = 2), 
+        col = f1,
+        column_split = features_df_filtered_V2$CellType,
+        column_names_side = "top", 
+        row_names_side = "left",
+        top_annotation = bottom_annotation,
+        column_title = NULL)
+dev.off()
+
+pdf(paste(path_guardar,"Heatmap_VisualizeTopMarked_Genes_NoLymphatics_Normal_Horizontal.pdf",sep="/"), width = 15, height = 4)
+Heatmap(matrix_expression_t,
+        cluster_rows = FALSE, 
+        cluster_columns = FALSE,
+        heatmap_legend_param = list(title = ""),
+        rect_gp = gpar(col = "white", lwd = 2), 
+        col = f1,
+        column_split = features_df_filtered_V2$CellType,
+        column_names_side = "top", 
+        row_names_side = "left",
+        top_annotation = bottom_annotation,
+        column_title = NULL)
+dev.off()
+
+```
+
+
+```{r}
+Fp <-FeaturePlot(data,features =c("Pecam1","Cdh5","Emcn","Cldn5","Kdr","Fli1","Erg"),min.cutoff = "q9", order=T,raster=FALSE,col=c("#D5D5D5","#5B4DA2"),ncol=3)&NoAxes()
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_EndothelialMarkers.tiff",sep="/"),height = 10,width = 10)
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_EndothelialMarkers.pdf",sep="/"),height = 10,width = 10)
+```
+
+```{r}
+Fp <-FeaturePlot(data,features =c("Pik3ca", "Pik3r1", "Pik3r2", "Pik3r3","Pten"),min.cutoff = "q9", order=T,raster=FALSE,col=c("#D5D5D5","#5B4DA2"),ncol=3)&NoAxes()
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_GenesInteresTotal.tiff",sep="/"),height = 7,width = 10)
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_GenesInteresTotal.pdf",sep="/"),height = 7,width = 10)
+```
+
+```{r}
+Fp <-FeaturePlot(data,features =c("Pik3ca", "Pik3r1", "Pik3r2", "Pik3r3","Pten"),min.cutoff = "q9", order=T,raster=FALSE,col=c("#D5D5D5","#5B4DA2"),ncol=3,split.by = "Phenotype")&NoAxes()
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_GenesInteresByPheno.tiff",sep="/"),height = 10,width = 10)
+ggsave(plot=Fp,filename=paste(path_guardar,"FP_GenesInteresByPheno.pdf",sep="/"),height = 10,width = 10)
+```
+
+
+
