@@ -153,4 +153,4 @@ Metrics:
 Data are available at GEO:
 
 - Accession IN VIVO: XXXXX
-- - Accession IN VITRO: XXXXX
+- Accession IN VITRO: XXXXX
