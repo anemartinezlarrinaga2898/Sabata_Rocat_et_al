@@ -2,7 +2,7 @@
 
 **Context-dependent response of endothelial cells to PIK3CA mutation**
 
-Welcome to this repository, where we delve into the code used to reproduce the analysis and generate all necessary R objects for the study: *"Endothelial Cell Fate and Differentiation Dictate Pathogenic Responses to PIK3CA Mutations in PROS"*.
+Welcome to this repository, where we delve into the code used to reproduce the analysis and generate all necessary R objects for the study: *"Context-dependent response of endothelial cells to PIK3CA mutation*"*.
 
 **Abstract**
 
