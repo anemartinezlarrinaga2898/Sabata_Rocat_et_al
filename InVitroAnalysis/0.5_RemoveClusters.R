@@ -1,128 +1,562 @@
-# SCRIPT: emove some of the clusters as they are noise or not clear what they are 
-# AUTOR: ANE MARTINEZ LARRINAGA
-# FECHA: 10.07.2024
+################################################################################
+# SCRIPT: Removal of non-endothelial and low-quality clusters and reclustering
+# AUTHOR: Ane Martinez Larrinaga
+# DATE: 10-07-2024
+#
+# DESCRIPTION:
+# This script removes clusters identified as non-endothelial cells and/or
+# low-quality cell populations from the initial scRNA-seq clustering.
+# Clusters 6 and 7 from the RNA_snn_res.0.3 clustering were excluded.
+# Following their removal, variable feature selection, scaling, PCA,
+# neighborhood graph construction, UMAP embedding and clustering were
+# recalculated using the retained cells.
+#
+# Expression of established endothelial and vascular subtype markers was
+# visualized to evaluate the resulting clusters. Cluster-specific markers
+# were subsequently identified at resolutions 0.1 and 0.3.
+#
+# INPUT:
+#   0.2_SeuratPipeline/Seu.Obj.rds
+#
+# OUTPUT:
+#   0.2_SeuratPipeline/Seu.Obj_Remove.rds
+#   UMAP plots after cluster removal
+#   Sample and phenotype distribution plots
+#   Endothelial marker FeaturePlots and VlnPlots
+#   Cluster marker tables for resolutions 0.1 and 0.3
+#
+# CLUSTERS REMOVED:
+#   RNA_snn_res.0.3 clusters 6 and 7
+#   Reason: non-endothelial identity and/or low-quality transcriptional profile
+#
+# MAIN PARAMETERS:
+#   Variable features: Seurat VST method
+#   PCA dimensions: data-driven selection
+#   Clustering resolutions: 0.1, 0.3 and 0.5
+#   Marker detection: positive markers only
+#   Minimum fraction of expressing cells: 0.25
+################################################################################
 
-###############################################################################
 
-directory <- setwd("/Users/anemartinezlarrinaga/Library/CloudStorage/OneDrive-JosepCarrerasLeukaemiaResearchInstitute(IJC)/2_PhD/1_GRAUPERA_LAB/2_PROYECTOS/10_Ana_MGRAUPERA_10/")
+# ------------------------------------------------------------------------------
+# 1. Load libraries
+# ------------------------------------------------------------------------------
 
 library(Seurat)
-library(RColorBrewer)
+library(ggplot2)
 library(tidyverse)
-library(foreach)
+library(RColorBrewer)
 library(Matrix)
-library(readxl)
+library(matchSCore2)
+library(writexl)
+library(openxlsx)
 
-getPalette <-  colorRampPalette(brewer.pal(8, "Set1"))
-col <-  getPalette(10)
+
+# ------------------------------------------------------------------------------
+# 2. Define output directory
+# ------------------------------------------------------------------------------
+
 path.guardar <- "0.2_SeuratPipeline"
 
-#source("/Users/anemartinezlarrinaga/Library/CloudStorage/OneDrive-JosepCarrerasLeukaemiaResearchInstitute(IJC)/2_PhD/3_UTILS/Util_Annotations_Cluster.R")
-###############################################################################
+if (!dir.exists(path.guardar)) {
+  dir.create(path.guardar, recursive = TRUE)
+}
 
-data <- readRDS("0.2_SeuratPipeline/Seu.Obj.rds")
-data <- SetIdent(data,value="RNA_snn_res.0.3")
+getPalette <- colorRampPalette(
+  brewer.pal(8, "Set1")
+)
 
-data_cluster <- subset(data,idents = c("6","7"),invert=T)
-gene.info.distribution <- summary(Matrix::colSums(data_cluster@assays$RNA@counts[,]>0))
-hvg.number <- round(gene.info.distribution[4]+100)
-data_cluster <- FindVariableFeatures(object = data_cluster,selection.method = "vst", nfeatures = hvg.number)
-data_cluster <- ScaleData(object = data_cluster)
 
-data_cluster <- RunPCA(object = data_cluster)
+# ------------------------------------------------------------------------------
+# 3. Load initial clustered Seurat object
+# ------------------------------------------------------------------------------
 
-# Estimate the PCA Dimmensions. 
-pct <- data[["pca"]]@stdev / sum(data[["pca"]]@stdev) * 100
-# Calculate cumulative percents for each PC
+data <- readRDS(
+  file.path(path.guardar, "Seu.Obj.rds")
+)
+
+data <- SetIdent(
+  data,
+  value = "RNA_snn_res.0.3"
+)
+
+
+# ------------------------------------------------------------------------------
+# 4. Remove non-endothelial / low-quality clusters
+# ------------------------------------------------------------------------------
+
+# Clusters 6 and 7 were excluded based on their non-endothelial identity
+# and/or low-quality transcriptional profiles.
+
+data_cluster <- subset(
+  data,
+  idents = c("6", "7"),
+  invert = TRUE
+)
+
+print(
+  paste(
+    "Cells retained after cluster removal:",
+    ncol(data_cluster)
+  )
+)
+
+
+# ------------------------------------------------------------------------------
+# 5. Recalculate variable features
+# ------------------------------------------------------------------------------
+
+gene.info.distribution <- summary(
+  Matrix::colSums(
+    data_cluster@assays$RNA@counts > 0
+  )
+)
+
+hvg.number <- round(
+  gene.info.distribution[4] + 100
+)
+
+data_cluster <- FindVariableFeatures(
+  object = data_cluster,
+  selection.method = "vst",
+  nfeatures = hvg.number
+)
+
+data_cluster <- ScaleData(
+  object = data_cluster
+)
+
+
+# ------------------------------------------------------------------------------
+# 6. Recalculate PCA
+# ------------------------------------------------------------------------------
+
+data_cluster <- RunPCA(
+  object = data_cluster
+)
+
+
+# ------------------------------------------------------------------------------
+# 7. Determine number of principal components
+# ------------------------------------------------------------------------------
+
+pct <- data_cluster[["pca"]]@stdev /
+  sum(data_cluster[["pca"]]@stdev) * 100
+
 cumu <- cumsum(pct)
-# Determine which PC exhibits cumulative percent greater than 90% and % variation associated with the PC as less than 5
-co1 <- which(cumu > 90 & pct < 5)[1]
-# Determine the difference between variation of PC and subsequent PC
-co2 <- sort(which((pct[1:length(pct) - 1] - pct[2:length(pct)]) > 0.1), decreasing = T)[1] + 1
-dim.final <- min(co1, co2)
 
-data_cluster <- FindNeighbors(object = data_cluster, dims = 1:dim.final)
-data_cluster <- RunUMAP(object = data_cluster, dims = 1:dim.final)
-resolutions <- c(0.1,0.3,0.5)
-data_cluster <- FindClusters(data_cluster, resolution = resolutions)
+co1 <- which(
+  cumu > 90 & pct < 5
+)[1]
 
-col <-  getPalette(length(unique(data_cluster$RNA_snn_res.0.5)))
-DimPlot(data_cluster,reduction = "umap",group.by = "RNA_snn_res.0.1",label = TRUE, label.size = 5,cols =col,pt.size = 1,raster=FALSE)&NoAxes()
-ggsave(filename = paste(path.guardar,"RNA_snn_res.0.1_Remove.png",sep="/"),width = 10,height = 10)
+co2 <- sort(
+  which(
+    (
+      pct[1:(length(pct) - 1)] -
+      pct[2:length(pct)]
+    ) > 0.1
+  ),
+  decreasing = TRUE
+)[1] + 1
 
-DimPlot(data_cluster,reduction = "umap",group.by = "RNA_snn_res.0.3",label = TRUE, label.size = 5,cols =col,pt.size = 1,raster=FALSE)&NoAxes()&NoLegend()
-ggsave(filename = paste(path.guardar,"RNA_snn_res.0.3_Remove.png",sep="/"),width = 10,height = 10)
+dim.final <- min(
+  co1,
+  co2
+)
 
-DimPlot(data_cluster,reduction = "umap",group.by = "RNA_snn_res.0.5",label = TRUE, label.size = 5,cols =col,pt.size = 1,raster=FALSE)&NoAxes()&NoLegend()
-ggsave(filename = paste(path.guardar,"RNA_snn_res.0.5_Remove.png",sep="/"),width = 10,height = 10)
-
-col <-  c("#99C5E3","#8CCE7D","#FFC685","#E2B5D5","#AAAEB0","#FA8D76","#F4D166")
-DimPlot(data_cluster,reduction = "umap",group.by = "ID",label = FALSE, label.size = 5,cols =alpha(col,0.66),pt.size = 1,raster=FALSE)&NoAxes()
-ggsave(filename = paste(path.guardar,"ID_Remove.png",sep="/"),width = 10,height = 10)
-
-col <-  c("#99C5E3","#8CCE7D","#FFC685")
-DimPlot(data,reduction = "umap",group.by = "Phenotype",label = FALSE, label.size = 5,cols =alpha(col,0.66),pt.size = 1,raster=FALSE,split.by = "Phenotype")&NoAxes()
-ggsave(filename = paste(path.guardar,"Phenotype_spli_Remove.png",sep="/"),width = 15,height = 7)
+print(
+  paste("Number of PCs selected:", dim.final)
+)
 
 
-col <-  getPalette(10)
-matchSCore2::summary_barplot(class.fac = data_cluster$RNA_snn_res.0.1,obs.fac =data_cluster$Phenotype)+scale_fill_manual(values = col)
-ggsave(filename = paste(path.guardar,"BarPlot_Pheno_Res01_Remove.png",sep="/"),width = 5,height = 7)
+# ------------------------------------------------------------------------------
+# 8. Recalculate neighbors, UMAP and clustering
+# ------------------------------------------------------------------------------
 
-matchSCore2::summary_barplot(class.fac = data_cluster$RNA_snn_res.0.3,obs.fac =data_cluster$Phenotype)+scale_fill_manual(values = col)
-ggsave(filename = paste(path.guardar,"BarPlot_Pheno_Res03_Remove.png",sep="/"),width = 5,height = 7)
+data_cluster <- FindNeighbors(
+  object = data_cluster,
+  dims = 1:dim.final
+)
 
-Fp <- FeaturePlot(data_cluster, features = c("Pecam1","Cdh5","Vwf"), min.cutoff = "q9", order = T,pt.size = 1,cols=c("Grey","Red"))&NoAxes()
-ggsave(plot = Fp,filename = paste(path.guardar,"FeaturePlots_MarkersEndo_Remove.png",sep="/"),width = 10,height = 10)
+data_cluster <- RunUMAP(
+  object = data_cluster,
+  dims = 1:dim.final
+)
 
-Fp <- FeaturePlot(data_cluster, features = c("Kdr","Rgcc","Cd200","Cd300lg","Cd36","Sgk1"), min.cutoff = "q9", order = T,raster = FALSE,cols=c("Grey","Red"))&NoAxes()
-ggsave(filename=paste(path.guardar,"Fp_Capillary_Remove.png",sep="/"),plot=Fp,width=10,height=10)
-Fp <- FeaturePlot(data_cluster, features = c("Sox17","Hey1","Sema3g","Clu"), min.cutoff = "q9", order = T,raster = FALSE,cols=c("Grey","Red"))&NoAxes()
-ggsave(filename=paste(path.guardar,"Fp_Artery_Remove.png",sep="/"),plot=Fp,width=10,height=10)
-Fp <- FeaturePlot(data_cluster, features = c("Nr2f2","Vcam1","Vwf","Vcam1","Icam1"), min.cutoff = "q9", order = T,raster = FALSE,cols=c("Grey","Red"))&NoAxes()
-ggsave(filename=paste(path.guardar,"Fp_Venous_Remove.png",sep="/"),plot=Fp,width=10,height=10)
-Fp <- FeaturePlot(data_cluster, features = c("Esm1","Cxcr4","Dll4","Col4a1","Col4a2"), min.cutoff = "q9", order = T,raster = FALSE,cols=c("Grey","Red"))&NoAxes()
-ggsave(filename=paste(path.guardar,"Fp_Tip_Remove.png",sep="/"),plot=Fp,width=10,height=10)
-Fp <- FeaturePlot(data_cluster, features = c("Mki67","Cdk1","Cdk2","Cdk4","Cdk6"), min.cutoff = "q9", order = T,raster = FALSE,cols=c("Grey","Red"))&NoAxes()
-ggsave(filename=paste(path.guardar,"Fp_Division_Remove.png",sep="/"),plot=Fp,width=10,height=10)
-Fp <- FeaturePlot(data_cluster, features = c("Lyve1","Prox1","Pdpln"), min.cutoff = "q9", order = T,raster = FALSE,cols=c("Grey","Red"))&NoAxes()
-ggsave(filename=paste(path.guardar,"Fp_Lymphatis_Remove.png",sep="/"),plot=Fp,width=10,height=5)
-Fp <- FeaturePlot(data_cluster, features = c("Lyve1","Prox1","Hey1","Hey2","Unc5b","Flt4","Nrp2","Nr2f2","Ephb4","Cxcr4"), min.cutoff = "q9", order = T,raster = FALSE,cols=c("Grey","Red"))&NoAxes()
-ggsave(filename=paste(path.guardar,"Fp_Interes_Remove.png",sep="/"),plot=Fp,width=15,height=10)
+resolutions <- c(
+  0.1,
+  0.3,
+  0.5
+)
 
-col <-  getPalette(10)
-data_cluster <- SetIdent(data_cluster,value="RNA_snn_res.0.3")
-Vln <- VlnPlot(object = data_cluster,features = c("Kdr","Rgcc","Cd200","Cd300lg","Cd36","Sgk1"),cols = col,pt.size = 0.1,sort = T)
-ggsave(filename=paste(path.guardar,"Vln_Capillary_Remove.png",sep="/"),plot=Vln,width=10,height=10)
-Vln <- VlnPlot(object = data_cluster,features = c("Sox17","Hey1","Sema3g","Clu"),cols = col,pt.size = 0.1,sort = T)
-ggsave(filename=paste(path.guardar,"Vln_Artery_Remove.png",sep="/"),plot=Vln,width=10,height=10)
-Vln <- VlnPlot(object = data_cluster,features = c("Nr2f2","Vcam1","Vwf","Vcam1","Icam1"),cols = col,pt.size = 0.1,sort = T)
-ggsave(filename=paste(path.guardar,"Vln_Venous_Remove.png",sep="/"),plot=Vln,width=10,height=10)
-Vln <- VlnPlot(object = data_cluster,features = c("Esm1","Cxcr4","Dll4","Col4a1","Col4a2"),cols = col,pt.size = 0.1,sort = T)
-ggsave(filename=paste(path.guardar,"Vln_Tip_Remove.png",sep="/"),plot=Vln,width=10,height=10)
-Vln <- VlnPlot(object = data_cluster,features = c("Mki67","Cdk1","Cdk2","Cdk4","Cdk6"),cols = col,pt.size = 0.1,sort = T)
-ggsave(filename=paste(path.guardar,"Vln_Division_Remove.png",sep="/"),plot=Vln,width=10,height=10)
-Vln <- VlnPlot(object = data_cluster,features = c("Lyve1","Prox1","Pdpln"),cols = col,pt.size = 0.1,sort = T)
-ggsave(filename=paste(path.guardar,"Vln_Lymphatics_Remove.png",sep="/"),plot=Vln,width=10,height=10)
+data_cluster <- FindClusters(
+  object = data_cluster,
+  resolution = resolutions
+)
 
 
+# ------------------------------------------------------------------------------
+# 9. Visualize clustering after cluster removal
+# ------------------------------------------------------------------------------
 
-col <-  getPalette(length(unique(data_cluster$RNA_snn_res.0.5)))
-data_cluster <- SetIdent(data_cluster,value="RNA_snn_res.0.1")
-saveRDS(data_cluster,paste(path.guardar,"Seu.Obj_Remove.rds",sep="/"))
+cluster.cols <- getPalette(
+  length(unique(data_cluster$RNA_snn_res.0.5))
+)
 
-data_cluster <- SetIdent(data_cluster,value="RNA_snn_res.0.1")
-markers <- FindAllMarkers(data_cluster,only.pos = T,min.pct = 0.25)
-writexl::write_xlsx(markers,paste(path.guardar,"TotalMarkers_Res01_Remove.xlsx",sep="/"))
-markers_cluster <- split(markers,markers$cluster)
-openxlsx::write.xlsx(markers_cluster,paste(path.guardar,"Markers_ByCluster_01_Remove.xlsx",sep="/"))
+for (res in c("0.1", "0.3", "0.5")) {
+
+  ident <- paste0(
+    "RNA_snn_res.",
+    res
+  )
+
+  p <- DimPlot(
+    data_cluster,
+    reduction = "umap",
+    group.by = ident,
+    label = TRUE,
+    label.size = 5,
+    cols = cluster.cols,
+    pt.size = 1,
+    raster = FALSE
+  ) &
+    NoAxes()
+
+  if (res != "0.1") {
+    p <- p & NoLegend()
+  }
+
+  ggsave(
+    filename = file.path(
+      path.guardar,
+      paste0(ident, "_Remove.png")
+    ),
+    plot = p,
+    width = 10,
+    height = 10
+  )
+}
 
 
-data_cluster <- SetIdent(data_cluster,value="RNA_snn_res.0.3")
-markers <- FindAllMarkers(data_cluster,only.pos = T,min.pct = 0.25)
-writexl::write_xlsx(markers,paste(path.guardar,"TotalMarkers_Res03_Remove.xlsx",sep="/"))
-markers_cluster <- split(markers,markers$cluster)
-openxlsx::write.xlsx(markers_cluster,paste(path.guardar,"Markers_ByCluster_03_Remove.xlsx",sep="/"))
+# ------------------------------------------------------------------------------
+# 10. Visualize sample distribution
+# ------------------------------------------------------------------------------
+
+sample.cols <- c(
+  "#99C5E3",
+  "#8CCE7D",
+  "#FFC685",
+  "#E2B5D5",
+  "#AAAEB0",
+  "#FA8D76",
+  "#F4D166"
+)
+
+p <- DimPlot(
+  data_cluster,
+  reduction = "umap",
+  group.by = "ID",
+  label = FALSE,
+  cols = scales::alpha(sample.cols, 0.66),
+  pt.size = 1,
+  raster = FALSE
+) &
+  NoAxes()
+
+ggsave(
+  filename = file.path(
+    path.guardar,
+    "ID_Remove.png"
+  ),
+  plot = p,
+  width = 10,
+  height = 10
+)
 
 
+# ------------------------------------------------------------------------------
+# 11. Visualize phenotype distribution
+# ------------------------------------------------------------------------------
 
+phenotype.cols <- c(
+  "#99C5E3",
+  "#8CCE7D",
+  "#FFC685"
+)
+
+p <- DimPlot(
+  data_cluster,
+  reduction = "umap",
+  group.by = "Phenotype",
+  split.by = "Phenotype",
+  label = FALSE,
+  cols = scales::alpha(phenotype.cols, 0.66),
+  pt.size = 1,
+  raster = FALSE
+) &
+  NoAxes()
+
+ggsave(
+  filename = file.path(
+    path.guardar,
+    "Phenotype_split_Remove.png"
+  ),
+  plot = p,
+  width = 15,
+  height = 7
+)
+
+
+# ------------------------------------------------------------------------------
+# 12. Cluster composition by phenotype
+# ------------------------------------------------------------------------------
+
+composition.cols <- getPalette(10)
+
+p <- matchSCore2::summary_barplot(
+  class.fac = data_cluster$RNA_snn_res.0.1,
+  obs.fac = data_cluster$Phenotype
+) +
+  scale_fill_manual(values = composition.cols)
+
+ggsave(
+  filename = file.path(
+    path.guardar,
+    "BarPlot_Pheno_Res01_Remove.png"
+  ),
+  plot = p,
+  width = 5,
+  height = 7
+)
+
+
+p <- matchSCore2::summary_barplot(
+  class.fac = data_cluster$RNA_snn_res.0.3,
+  obs.fac = data_cluster$Phenotype
+) +
+  scale_fill_manual(values = composition.cols)
+
+ggsave(
+  filename = file.path(
+    path.guardar,
+    "BarPlot_Pheno_Res03_Remove.png"
+  ),
+  plot = p,
+  width = 5,
+  height = 7
+)
+
+
+# ------------------------------------------------------------------------------
+# 13. Visualize endothelial and vascular subtype markers
+# ------------------------------------------------------------------------------
+
+marker.groups <- list(
+
+  Endothelial = c(
+    "Pecam1", "Cdh5", "Vwf"
+  ),
+
+  Capillary = c(
+    "Kdr", "Rgcc", "Cd200",
+    "Cd300lg", "Cd36", "Sgk1"
+  ),
+
+  Arterial = c(
+    "Sox17", "Hey1", "Sema3g", "Clu"
+  ),
+
+  Venous = c(
+    "Nr2f2", "Vcam1", "Vwf", "Icam1"
+  ),
+
+  Angiogenic = c(
+    "Esm1", "Cxcr4", "Dll4",
+    "Col4a1", "Col4a2"
+  ),
+
+  Proliferative = c(
+    "Mki67", "Cdk1", "Cdk2", "Cdk4", "Cdk6"
+  ),
+
+  Lymphatic = c(
+    "Lyve1", "Prox1", "Pdpln"
+  )
+)
+
+
+for (marker.name in names(marker.groups)) {
+
+  genes <- marker.groups[[marker.name]]
+
+  p <- FeaturePlot(
+    data_cluster,
+    features = genes,
+    min.cutoff = "q9",
+    order = TRUE,
+    raster = FALSE,
+    cols = c("Grey", "Red")
+  ) &
+    NoAxes()
+
+  ggsave(
+    filename = file.path(
+      path.guardar,
+      paste0(
+        "FeaturePlot_",
+        marker.name,
+        "_Remove.png"
+      )
+    ),
+    plot = p,
+    width = 10,
+    height = 10
+  )
+}
+
+
+# ------------------------------------------------------------------------------
+# 14. Generate violin plots of vascular subtype markers
+# ------------------------------------------------------------------------------
+
+data_cluster <- SetIdent(
+  data_cluster,
+  value = "RNA_snn_res.0.3"
+)
+
+vln.groups <- marker.groups[
+  c(
+    "Capillary",
+    "Arterial",
+    "Venous",
+    "Angiogenic",
+    "Proliferative",
+    "Lymphatic"
+  )
+]
+
+vln.cols <- getPalette(10)
+
+
+for (marker.name in names(vln.groups)) {
+
+  genes <- vln.groups[[marker.name]]
+
+  p <- VlnPlot(
+    object = data_cluster,
+    features = genes,
+    cols = vln.cols,
+    pt.size = 0.1,
+    sort = TRUE
+  )
+
+  ggsave(
+    filename = file.path(
+      path.guardar,
+      paste0(
+        "Vln_",
+        marker.name,
+        "_Remove.png"
+      )
+    ),
+    plot = p,
+    width = 10,
+    height = 10
+  )
+}
+
+
+# ------------------------------------------------------------------------------
+# 15. Save reclustered endothelial Seurat object
+# ------------------------------------------------------------------------------
+
+data_cluster <- SetIdent(
+  data_cluster,
+  value = "RNA_snn_res.0.1"
+)
+
+saveRDS(
+  data_cluster,
+  file = file.path(
+    path.guardar,
+    "Seu.Obj_Remove.rds"
+  )
+)
+
+
+# ------------------------------------------------------------------------------
+# 16. Identify markers - resolution 0.1
+# ------------------------------------------------------------------------------
+
+data_cluster <- SetIdent(
+  data_cluster,
+  value = "RNA_snn_res.0.1"
+)
+
+markers.res01 <- FindAllMarkers(
+  data_cluster,
+  only.pos = TRUE,
+  min.pct = 0.25
+)
+
+writexl::write_xlsx(
+  markers.res01,
+  file.path(
+    path.guardar,
+    "TotalMarkers_Res01_Remove.xlsx"
+  )
+)
+
+markers.cluster.res01 <- split(
+  markers.res01,
+  markers.res01$cluster
+)
+
+openxlsx::write.xlsx(
+  markers.cluster.res01,
+  file.path(
+    path.guardar,
+    "Markers_ByCluster_01_Remove.xlsx"
+  )
+)
+
+
+# ------------------------------------------------------------------------------
+# 17. Identify markers - resolution 0.3
+# ------------------------------------------------------------------------------
+
+data_cluster <- SetIdent(
+  data_cluster,
+  value = "RNA_snn_res.0.3"
+)
+
+markers.res03 <- FindAllMarkers(
+  data_cluster,
+  only.pos = TRUE,
+  min.pct = 0.25
+)
+
+writexl::write_xlsx(
+  markers.res03,
+  file.path(
+    path.guardar,
+    "TotalMarkers_Res03_Remove.xlsx"
+  )
+)
+
+markers.cluster.res03 <- split(
+  markers.res03,
+  markers.res03$cluster
+)
+
+openxlsx::write.xlsx(
+  markers.cluster.res03,
+  file.path(
+    path.guardar,
+    "Markers_ByCluster_03_Remove.xlsx"
+  )
+)
+
+print(
+  "Removal of non-endothelial/low-quality clusters and reclustering completed."
+)
