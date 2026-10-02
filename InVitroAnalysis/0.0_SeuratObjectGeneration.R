@@ -1,12 +1,6 @@
 # SCRIPT: Generate Seurat Object by sample
 # AUTOR: ANE MARTINEZ LARRINAGA
-# FECHA: 23-10-2023
-
-# has creado el objeto en el cluster porque aqui te lo crea con la version V5
 ###############################################################################
-
-directory <- setwd("/Users/anemartinezlarrinaga/Library/CloudStorage/OneDrive-JosepCarrerasLeukaemiaResearchInstitute(IJC)/2_PhD/1_GRAUPERA_LAB/2_PROYECTOS/10_Ana_MGRAUPERA_10/")
-
 library("Seurat", lib.loc = "/Library/Frameworks/R.framework/Versions/4.2/old-versions")
 options(Seurat.object.assay.version = 'v4')
 library(RColorBrewer)
