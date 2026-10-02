@@ -1,1 +1,169 @@
+## scRNA-seq analysis pipeline In vitro lung endothelial cells
+# Fig: Extended Data Fig 8
 
+Single-cell RNA sequencing data were processed using a Seurat-based workflow. The analysis included generation of Seurat objects from Cell Ranger count matrices, quality-control filtering, doublet estimation, dimensionality reduction, clustering, identification and removal of non-endothelial or low-quality populations, endothelial cell reclustering, evaluation of clustering resolution, and characterization of endothelial populations using gene-expression markers and UCell signatures.
+
+### Analysis workflow
+
+**1. Seurat object generation and quality control**
+
+Cell Ranger count matrices were imported independently for each sample and converted into Seurat objects. Sample metadata and quality-control metrics were added before merging the samples into a single dataset.
+
+Cells were retained according to the following criteria:
+
+- `nFeature_RNA >= 250`
+- mitochondrial reads `< 20%`
+- `log10GenesPerUMI > 0.8`
+
+Genes detected in five or fewer cells were subsequently excluded from downstream analysis.
+
+---
+
+**2. Doublet estimation**
+
+Doublets were estimated independently for each sample using **DoubletFinder**.
+
+DoubletFinder predictions were incorporated into the metadata of the corresponding Seurat objects. Predicted doublets were retained and were not excluded from downstream analyses.
+
+---
+
+**3. Initial preprocessing, dimensionality reduction and clustering**
+
+The filtered dataset was normalized using Seurat. Highly variable genes were identified using the `vst` method, followed by data scaling and principal component analysis (PCA).
+
+The number of principal components used for downstream analyses was determined from the percentage and cumulative percentage of variation explained by the PCs.
+
+A shared nearest-neighbor graph was constructed using the selected PCs, followed by UMAP dimensionality reduction and graph-based clustering.
+
+Initial clustering was evaluated at resolutions:
+
+`0.1`, `0.3`, and `0.5`.
+
+Cluster-specific positive markers were identified using Seurat `FindAllMarkers`.
+
+---
+
+**4. Identification and removal of non-endothelial and low-quality populations**
+
+Initial clusters were evaluated based on their transcriptional profiles and expression of established endothelial and vascular markers.
+
+Alternative cluster-removal strategies were explored to distinguish endothelial populations from non-endothelial, low-quality, or transcriptionally ambiguous populations. Candidate strategies were evaluated by reclustering the retained cells and examining endothelial and vascular gene signatures, UCell scores, and cell-cycle states.
+
+Following this assessment, clusters identified as non-endothelial and/or low-quality were excluded from the dataset.
+
+Variable feature selection, scaling, PCA, neighborhood graph construction, UMAP embedding, and clustering were recalculated after cell exclusion.
+
+---
+
+**5. Endothelial cell reclustering**
+
+The retained endothelial cell population was independently reprocessed and reclustered.
+
+Clustering was initially evaluated at resolutions:
+
+`0.1`, `0.3`, and `0.5`.
+
+Higher clustering resolutions were subsequently explored to resolve endothelial heterogeneity:
+
+`0.6`, `0.7`, `0.8`, `0.9`, and `1.0`.
+
+For each resolution, positive cluster markers were identified and the top marker genes were visualized to support selection and interpretation of the endothelial cell populations.
+
+---
+
+**6. Endothelial population characterization**
+
+Endothelial clusters were characterized using the expression of established vascular marker genes associated with endothelial states and subtypes, including arterial, venous, capillary, angiogenic/tip-cell, proliferative, and lymphatic programs.
+
+Marker expression was evaluated using UMAP FeaturePlots, violin plots, DotPlots, and cluster-specific differential expression analysis.
+
+---
+
+**7. UCell gene-signature analysis**
+
+Predefined endothelial and vascular gene signatures were scored at the single-cell level using **UCell**.
+
+Signature scores were visualized across the endothelial UMAP and clustering structure. Individual genes belonging to each signature were also inspected to support the characterization of endothelial cell populations.
+
+---
+
+**8. Cell-cycle assessment**
+
+Cell-cycle activity was evaluated using Seurat `CellCycleScoring` with canonical S-phase and G2/M-phase gene sets.
+
+Cell-cycle phase and S/G2M scores were visualized across the endothelial dataset and experimental conditions to assess the contribution of proliferative states to the observed cellular heterogeneity.
+
+---
+
+## Pipeline overview
+
+```text
+Cell Ranger count matrices
+        │
+        ▼
+Seurat objects by sample
+        │
+        ▼
+Cell-level QC
+        │
+        ▼
+Merged filtered dataset
+        │
+        ▼
+DoubletFinder estimation
+(doublets retained)
+        │
+        ▼
+Normalization + HVG selection
+        │
+        ▼
+PCA
+        │
+        ▼
+Neighbors + UMAP + initial clustering
+        │
+        ▼
+Evaluation of endothelial identity
+        │
+        ▼
+Evaluation of cluster-removal strategies
+        │
+        ▼
+Removal of non-endothelial /
+low-quality populations
+        │
+        ▼
+Reprocessing and EC reclustering
+        │
+        ▼
+Evaluation of higher clustering resolutions
+        │
+        ▼
+Cluster marker identification
+        │
+        ▼
+Endothelial marker characterization
+        │
+        ├──────────────► UCell signature scoring
+        │
+        └──────────────► Cell-cycle assessment
+```
+
+## Scripts
+
+| Script | Analysis |
+|---|---|
+| `01_CreateSeuratObject_QC.R` | Generation of Seurat objects and cell-level quality-control filtering |
+| `02_DoubletFinder.R` | Sample-wise doublet estimation using DoubletFinder |
+| `03_AddDoubletFinderResults.R` | Incorporation of DoubletFinder predictions into Seurat metadata |
+| `04_InitialClustering.R` | Normalization, variable feature selection, PCA, UMAP and initial clustering |
+| `05_EvaluateClusterRemoval.R` | Evaluation of alternative strategies for excluding non-endothelial/low-quality populations |
+| `06_RemoveClusters_Recluster.R` | Removal of selected populations and endothelial cell reclustering |
+| `07_EvaluateHigherResolutions.R` | Evaluation of higher clustering resolutions and cluster markers |
+| `08_UCell_Signatures_and_CellCycle.R` | UCell signature scoring and cell-cycle assessment |
+
+## Main software
+
+The workflow was primarily performed in **R** using **Seurat** for single-cell RNA-seq processing and analysis. **DoubletFinder** was used for doublet estimation and **UCell** for single-cell gene-signature scoring.
+
+Exact software and package versions used for the analyses are provided in the accompanying software documentation.
