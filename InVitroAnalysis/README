@@ -148,22 +148,3 @@ Endothelial marker characterization
         │
         └──────────────► Cell-cycle assessment
 ```
-
-## Scripts
-
-| Script | Analysis |
-|---|---|
-| `01_CreateSeuratObject_QC.R` | Generation of Seurat objects and cell-level quality-control filtering |
-| `02_DoubletFinder.R` | Sample-wise doublet estimation using DoubletFinder |
-| `03_AddDoubletFinderResults.R` | Incorporation of DoubletFinder predictions into Seurat metadata |
-| `04_InitialClustering.R` | Normalization, variable feature selection, PCA, UMAP and initial clustering |
-| `05_EvaluateClusterRemoval.R` | Evaluation of alternative strategies for excluding non-endothelial/low-quality populations |
-| `06_RemoveClusters_Recluster.R` | Removal of selected populations and endothelial cell reclustering |
-| `07_EvaluateHigherResolutions.R` | Evaluation of higher clustering resolutions and cluster markers |
-| `08_UCell_Signatures_and_CellCycle.R` | UCell signature scoring and cell-cycle assessment |
-
-## Main software
-
-The workflow was primarily performed in **R** using **Seurat** for single-cell RNA-seq processing and analysis. **DoubletFinder** was used for doublet estimation and **UCell** for single-cell gene-signature scoring.
-
-Exact software and package versions used for the analyses are provided in the accompanying software documentation.
