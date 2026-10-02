@@ -25,6 +25,9 @@
 #   PCA dimensions: data-driven selection
 #   Clustering resolutions: 0.1, 0.3 and 0.5
 #   Marker detection: positive markers, min.pct = 0.25
+# NOTE:
+#   DoubletFinder predictions are included in the metadata of this object.
+#   Predicted doublets were not removed prior to downstream analysis.
 ################################################################################
 
 
